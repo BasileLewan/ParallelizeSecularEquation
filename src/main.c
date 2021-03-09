@@ -31,6 +31,14 @@ double d_f(double lambda, double rho, double* delta, double* ksi) {
 	return res;
 }
 
+double d2_f(double lambda, double rho, double* delta, double* ksi) {
+	/* Secular equation, second derivative */
+	double res = 0;
+	for (unsigned short j = 0; j < D; j++)
+		res -= 2 * sqr(ksi[j]) / pow(lambda - delta[j], 3);
+	return res;
+}
+
 double d_psi(int k, double lambda, double rho, double* delta, double* ksi) {
 	double res = 0;
 	for (; k > -1; k--)
