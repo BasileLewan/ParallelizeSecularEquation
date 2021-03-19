@@ -1,7 +1,7 @@
 ﻿#include <math.h>
 #include <float.h>
 #include <stdio.h>
-#include <unistd.h>
+// #include <unistd.h>
 #define D 10
 
 const double RHO = .5;
@@ -61,6 +61,25 @@ struct Tuple abc(int k, double lambda, double rho, double* delta, double* ksi) {
 	return res;
 }
 
+struct Tuple gragg(int k, double lambda, double rho, double* delta, double* ksi) {
+	/* Computing parameters of the Gragg scheme */
+	double S = 0, s = 0, c, tmp;
+	for (unsigned short i = 0; i < D; i++) {
+		if (i == k || i == k + 1)
+			continue;
+		tmp = sqr(ksi[i]) / pow(delta[i] - lambda, 3);
+		s += (delta[i] - delta[k + 1]) * tmp;
+		S += (delta[i] - delta[k]) * tmp;
+	}
+	s *= pow(delta[k] - lambda, 3) / (delta[k] - delta[k + 1]);
+	S *= pow(delta[k + 1] - lambda, 3) / (delta[k + 1] - delta[k]);
+	s += sqr(ksi[k]); S += sqr(ksi[k + 1]);
+	c = f(lambda, rho, delta, ksi) - (delta[k] + delta[k + 1] - 2 * lambda) * d_f(lambda, rho, delta, ksi) + (delta[k] - lambda) * (delta[k + 1] - lambda) * d2_f(lambda, rho, delta, ksi) / 2;
+	struct Tuple res;
+	res.a = s; res.b = S; res.c = c;
+	return res;
+}
+
 double initial_guess(int k, double rho, double* delta, double* ksi) {
 	/* Defining the first value for the iterations scheme */
 	// TODO : case >λₙ
@@ -83,24 +102,24 @@ double initial_guess(int k, double rho, double* delta, double* ksi) {
 }
 
 int main() {
-	struct Tuple param;
+	struct Tuple param, grg;
 	double a, b, c, eta = 0;
-
-	int K = 2;
+	int K = 4;
 	double y = initial_guess(K, RHO, DELTA, KSI);
 
 	do {
 		y += eta;
 		param = abc(K, y, RHO, DELTA, KSI);
-		a = param.a; b = param.b; c = param.c;
+		grg = gragg(K, y, RHO, DELTA, KSI);
+		a = param.a; b = param.b; c = grg.c;
+		printf("a = %g b = %g c=%g\n",a, b, c);
 		if (a > 0)
-			eta = 2 * b / (a + sqrt(sqr(a) - 4 * b * c));
+			eta = 2 * b / (a + sqrt(fabs(sqr(a) - 4 * b * c))); // root might be negative for some reason TODO:wtf
 		else
-			eta = (a - sqrt(sqr(a) - 4 * b * c)) / (2 * c);
-		//printf("y = %g eta = %g\n", y, fabs(eta));
+			eta = (a - sqrt(fabs(sqr(a) - 4 * b * c))) / (2 * c);
+		printf("y = %g eta = %g\n", y, fabs(eta));
 		//printf("stop = %g\n", 16. * FLT_MIN * fmin(fabs(DELTA[K] - y), fabs(DELTA[K + 1] - y)));
-		printf("y = %g eta = %g f(delta + to) = %g, stop = %g\n", y, fabs(eta), fabs(f(y, RHO, DELTA, KSI)), pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * DELTA[K] - y, RHO, DELTA, KSI)));
-		sleep(1);
+		//printf("y = %g eta = %g f(delta + to) = %g, stop = %g\n", y, fabs(eta), fabs(f(y, RHO, DELTA, KSI)), pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * DELTA[K] - y, RHO, DELTA, KSI)));
 	} while (fabs(f(y, RHO, DELTA, KSI)) > pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * DELTA[K] - y, RHO, DELTA, KSI)));
 		//fabs(eta) > 16. * FLT_MIN * fmin(fabs(DELTA[K] - y), fabs(DELTA[K + 1] - y)) // naive stopping criterion
 
