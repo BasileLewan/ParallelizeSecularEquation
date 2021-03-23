@@ -51,6 +51,8 @@ struct Tuple abc(int k, double lambda, double rho, double* delta, double* ksi) {
 	struct Tuple res;
 	double fy = f(lambda, rho, delta, ksi);
 	double dfy = d_f(lambda, rho, delta, ksi);
+
+	/* Defining uppercase deltas */
 	double delta_k = delta[k] - lambda;
 	double delta_k1 = delta[k + 1] - lambda;
 
@@ -62,6 +64,10 @@ struct Tuple abc(int k, double lambda, double rho, double* delta, double* ksi) {
 }
 
 struct Tuple gragg(int k, double lambda, double rho, double* delta, double* ksi) {
+	/* Defining uppercase deltas */
+	double delta_k = delta[k] - lambda;
+	double delta_k1 = delta[k + 1] - lambda;
+
 	/* Computing parameters of the Gragg scheme */
 	double S = 0, s = 0, c, tmp;
 	for (unsigned short i = 0; i < D; i++) {
@@ -74,7 +80,7 @@ struct Tuple gragg(int k, double lambda, double rho, double* delta, double* ksi)
 	s *= pow(delta[k] - lambda, 3) / (delta[k] - delta[k + 1]);
 	S *= pow(delta[k + 1] - lambda, 3) / (delta[k + 1] - delta[k]);
 	s += sqr(ksi[k]); S += sqr(ksi[k + 1]);
-	c = f(lambda, rho, delta, ksi) - (delta[k] + delta[k + 1] - 2 * lambda) * d_f(lambda, rho, delta, ksi) + (delta[k] - lambda) * (delta[k + 1] - lambda) * d2_f(lambda, rho, delta, ksi) / 2;
+	c = f(lambda, rho, delta, ksi) - (delta_k + delta_k1) * d_f(lambda, rho, delta, ksi) + delta_k * delta_k1 * d2_f(lambda, rho, delta, ksi) / 2;
 	struct Tuple res;
 	res.a = s; res.b = S; res.c = c;
 	return res;
