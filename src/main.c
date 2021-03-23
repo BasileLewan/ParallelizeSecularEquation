@@ -46,7 +46,7 @@ double d_psi(int k, double lambda, double rho, double* delta, double* ksi) {
 	return res;
 }
 
-struct Tuple abc(int k, double lambda, double rho, double* delta, double* ksi) {
+struct Tuple middle_way(int k, double lambda, double rho, double* delta, double* ksi) {
 	/* Parameters to approximate */
 	struct Tuple res;
 	double fy = f(lambda, rho, delta, ksi);
@@ -60,6 +60,31 @@ struct Tuple abc(int k, double lambda, double rho, double* delta, double* ksi) {
 	res.b = delta_k * delta_k1 * fy;
 	res.c = fy - delta_k1 * dfy - d_psi(k, lambda, rho, delta, ksi) * (delta_k - delta_k1);
 
+	return res;
+}
+
+struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, double* ksi) {
+	/* Parameters to approximate */
+	struct Tuple res;
+	double fy = f(lambda, rho, delta, ksi);
+	double dfy = d_f(lambda, rho, delta, ksi);
+
+	/* Defining uppercase deltas */
+	double delta_k = delta[k] - lambda;
+	double delta_k1 = delta[k + 1] - lambda;
+
+	res.a = (delta_k + delta_k1) * fy - delta_k * delta_k1 * dfy;
+	res.b = delta_k * delta_k1 * fy;
+	res.c = 0;
+
+	/* Testing if lambda[k] closer to delta[k] or delta[k + 1] */
+	if (fabs(lambda - delta[k]) < fabs(lambda - delta[k + 1])) {
+		res.c = fy - delta_k1 * dfy - sqr(ksi[k]) * (delta[k] - delta[k + 1]) / sqr(delta_k);
+	}
+	else{
+		res.c = fy - delta_k * dfy - sqr(ksi[k + 1]) * (delta[k + 1] - delta[k]) / sqr(delta_k1);
+	}
+	
 	return res;
 }
 
@@ -115,7 +140,7 @@ int main() {
 
 	do {
 		y += eta;
-		param = abc(K, y, RHO, DELTA, KSI);
+		param = middle_way(K, y, RHO, DELTA, KSI);
 		grg = gragg(K, y, RHO, DELTA, KSI);
 		a = param.a; b = param.b; c = grg.c;
 		printf("a = %g b = %g c=%g\n",a, b, c);
