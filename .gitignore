@@ -57,3 +57,7 @@ Debug/
 *.vcxproj
 /ProjetS2.vcxproj.filters
 /ProjetS2.vcxproj.user
+/Release
+/src/tst
+/src/mp
+/src/makefile

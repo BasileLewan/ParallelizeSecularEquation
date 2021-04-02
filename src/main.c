@@ -1,9 +1,12 @@
-﻿#include <math.h>
+﻿#include <omp.h>
+#include <math.h>
 #include <float.h>
 #include <stdio.h>
-// #include <unistd.h>
+#include <stdbool.h>
+#include "util.h"
 #define D 10
 
+// Debug
 const double RHO = .5;
 const double DELTA[D] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 const double KSI[D] = { .1, .2, .3, .4, .5, .5, .4, .3, .2, .1 };
@@ -23,7 +26,7 @@ double f(double lambda, double rho, double* delta, double* ksi) {
 	return res;
 }
 
-double d_f(double lambda, double rho, double* delta, double* ksi) {
+double d_f(double lambda, double* delta, double* ksi) {
 	/* Secular equation, first derivative */
 	double res = 0;
 	for (unsigned short j = 0; j < D; j++)
@@ -31,7 +34,7 @@ double d_f(double lambda, double rho, double* delta, double* ksi) {
 	return res;
 }
 
-double d2_f(double lambda, double rho, double* delta, double* ksi) {
+double d2_f(double lambda, double* delta, double* ksi) {
 	/* Secular equation, second derivative */
 	double res = 0;
 	for (unsigned short j = 0; j < D; j++)
@@ -39,35 +42,45 @@ double d2_f(double lambda, double rho, double* delta, double* ksi) {
 	return res;
 }
 
-double d_psi(int k, double lambda, double rho, double* delta, double* ksi) {
+double d_psi(int k, double lambda, double* delta, double* ksi) {
 	double res = 0;
 	for (; k > -1; k--)
 		res += sqr(ksi[k]) / sqr(lambda - delta[k]);
 	return res;
 }
 
-struct Tuple middle_way(int k, double lambda, double rho, double* delta, double* ksi) {
+struct Tuple middle_way(int k, double lambda, double rho, double* delta, double* ksi, bool fk) {
 	/* Parameters to approximate */
 	struct Tuple res;
 	double fy = f(lambda, rho, delta, ksi);
-	double dfy = d_f(lambda, rho, delta, ksi);
+	double dfy = d_f(lambda, delta, ksi);
 
-	/* Defining uppercase deltas */
+	if (fk) {
+		fy += sqr(ksi[k]) / (lambda - delta[k]);
+		dfy -= sqr(ksi[k]) / sqr(lambda - delta[k]);
+	}
+
+	/* Defining Δ */
 	double delta_k = delta[k] - lambda;
 	double delta_k1 = delta[k + 1] - lambda;
 
 	res.a = (delta_k + delta_k1) * fy - delta_k * delta_k1 * dfy;
 	res.b = delta_k * delta_k1 * fy;
-	res.c = fy - delta_k1 * dfy - d_psi(k, lambda, rho, delta, ksi) * (delta_k - delta_k1);
+	res.c = fy - delta_k1 * dfy - d_psi(k, lambda, delta, ksi) * (delta_k - delta_k1);
 
 	return res;
 }
 
-struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, double* ksi) {
+struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, double* ksi, bool fk) {
 	/* Parameters to approximate */
 	struct Tuple res;
 	double fy = f(lambda, rho, delta, ksi);
-	double dfy = d_f(lambda, rho, delta, ksi);
+	double dfy = d_f(lambda, delta, ksi);
+
+	if (fk){
+		fy += sqr(ksi[k]) / (lambda - delta[k]);
+		dfy -= sqr(ksi[k]) / sqr(lambda - delta[k]);
+	}
 
 	/* Defining uppercase deltas */
 	double delta_k = delta[k] - lambda;
@@ -89,11 +102,16 @@ struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, doubl
 }
 
 struct Tuple gragg(int k, double lambda, double rho, double* delta, double* ksi) {
-	/* Defining uppercase deltas */
+	/* Defining Δ */
 	double delta_k = delta[k] - lambda;
 	double delta_k1 = delta[k + 1] - lambda;
 
 	/* Computing parameters of the Gragg scheme */
+	struct Tuple res;
+	double fy = f(lambda, rho, delta, ksi);
+	double dfy = d_f(lambda, delta, ksi);
+
+	/*** S & s servent à rien ?
 	double S = 0, s = 0, c, tmp;
 	for (unsigned short i = 0; i < D; i++) {
 		if (i == k || i == k + 1)
@@ -104,12 +122,16 @@ struct Tuple gragg(int k, double lambda, double rho, double* delta, double* ksi)
 	}
 	s *= pow(delta[k] - lambda, 3) / (delta[k] - delta[k + 1]);
 	S *= pow(delta[k + 1] - lambda, 3) / (delta[k + 1] - delta[k]);
-	s += sqr(ksi[k]); S += sqr(ksi[k + 1]);
-	c = f(lambda, rho, delta, ksi) - (delta_k + delta_k1) * d_f(lambda, rho, delta, ksi) + delta_k * delta_k1 * d2_f(lambda, rho, delta, ksi) / 2;
-	struct Tuple res;
-	res.a = s; res.b = S; res.c = c;
+	s += sqr(ksi[k]); S += sqr(ksi[k + 1]); 
+	***/
+
+	res.a = (delta_k + delta_k1) * fy - delta_k * delta_k1 * dfy;
+	res.b = delta_k * delta_k1 * fy;
+	res.c = f(lambda, rho, delta, ksi) - (delta_k + delta_k1) * d_f(lambda, delta, ksi) + delta_k * delta_k1 * d2_f(lambda, delta, ksi) / 2;
+
 	return res;
 }
+
 
 double initial_guess(int k, double rho, double* delta, double* ksi) {
 	/* Defining the first value for the iterations scheme */
@@ -127,32 +149,110 @@ double initial_guess(int k, double rho, double* delta, double* ksi) {
 		b = (delta[k + 1] - delta[k]) * sqr(ksi[k]);
 	}
 	if (a > 0)
-		return 2 * b / (a + sqrt(sqr(a) - 4 * b * g));// + delta[k]
+		return 2 * b / (a + sqrt(sqr(a) - 4 * b * g)) + delta[k];
 	else
-		return (a - sqrt(sqr(a) - 4 * b * g)) / (2 * g);// + delta[k]
+		return (a - sqrt(sqr(a) - 4 * b * g)) / (2 * g) + delta[k];
 }
 
-int main() {
-	struct Tuple param, grg;
-	double a, b, c, eta = 0;
-	int K = 4;
-	double y = initial_guess(K, RHO, DELTA, KSI);
+double eig_gragg(int k, double rho, double* delta, double* ksi) {
+	/* Compute the kth eigenvalue using Gragg's scheme */
+	double a, b, c, y, eta = 0;
+	struct Tuple param;
+	y = initial_guess(k, rho, delta, ksi);
 
 	do {
 		y += eta;
-		param = middle_way(K, y, RHO, DELTA, KSI);
-		grg = gragg(K, y, RHO, DELTA, KSI);
-		a = param.a; b = param.b; c = grg.c;
-		printf("a = %g b = %g c=%g\n",a, b, c);
+		param = gragg(k, y , rho, delta, ksi);
+		a = param.a; b = param.b; c = param.c;
+		// printf("a = %g b = %g c=%g\n", a, b, c);
 		if (a > 0)
 			eta = 2 * b / (a + sqrt(fabs(sqr(a) - 4 * b * c))); // root might be negative for some reason TODO:wtf
 		else
 			eta = (a - sqrt(fabs(sqr(a) - 4 * b * c))) / (2 * c);
 		printf("y = %g eta = %g\n", y, fabs(eta));
-		//printf("stop = %g\n", 16. * FLT_MIN * fmin(fabs(DELTA[K] - y), fabs(DELTA[K + 1] - y)));
-		//printf("y = %g eta = %g f(delta + to) = %g, stop = %g\n", y, fabs(eta), fabs(f(y, RHO, DELTA, KSI)), pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * DELTA[K] - y, RHO, DELTA, KSI)));
-	} while (fabs(f(y, RHO, DELTA, KSI)) > pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * DELTA[K] - y, RHO, DELTA, KSI)));
-		//fabs(eta) > 16. * FLT_MIN * fmin(fabs(DELTA[K] - y), fabs(DELTA[K + 1] - y)) // naive stopping criterion
+	} while (fabs(f(y, rho, delta, ksi)) > pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y, delta, ksi)));
 
-	return 1;
+	return y;
+}
+
+double* solve_gragg(double rho, double* delta, double* ksi) {
+	/* Compute all the eigenvalues using Gragg's scheme*/
+	double* res = malloc(D);
+	if (res == NULL)
+		perror("Memory error");
+	int k;
+
+#pragma omp parallel for
+	for (k = 0; k < 9; k++) {
+		res[k] = eig_gragg(k, rho, delta, ksi);
+	}
+
+	return res;
+}
+
+double eig_hybrid(int k, double rho, double* delta, double* ksi) {
+	/* Compute the kth eigenvalue using the Hybrid scheme*/
+
+	/* Initialization */
+	struct Tuple param;
+	double a, b, c, eta, f_nxt;
+	double y = initial_guess(k, rho, delta, ksi);
+	double f_prv = f(y, rho, delta, ksi);
+	double fk = f_prv + sqr(ksi[k]) / (y - delta[k]);  // f(y) without the kth term in the summation
+	bool use_fk = fk > 0;
+
+	/* Deciding which scheme to start with */
+	param = fixed_weight(k, y, rho, delta, ksi, use_fk);
+	a = param.a; b = param.b; c = param.c;
+	if (a > 0)
+		eta = 2 * b / (a + sqrt(fabs(sqr(a) - 4 * b * c)));
+	else
+		eta = (a - sqrt(fabs(sqr(a) - 4 * b * c))) / (2 * c);
+	y += eta;
+	f_nxt = f(y, rho, delta, ksi);
+
+	if (f_nxt < 0 && fabs(f_nxt) > 0.1 * fabs(f_prv)) 
+		use_fk = false;
+
+	/* Converging towards zero */
+	do {
+		f_prv = f_nxt;
+		fk = f_prv + sqr(ksi[k]) / (y - delta[k]);
+
+		/* Using 2 or 3 poles */
+		if (fk > 0) 
+			param = use_fk ? fixed_weight(k, y, rho, delta, ksi, true) : middle_way(k, y, rho, delta, ksi, true);		
+		else 
+			param = use_fk ? fixed_weight(k, y, rho, delta, ksi, false) : middle_way(k, y, rho, delta, ksi, false);
+		a = param.a; b = param.b; c = param.c;
+
+		/* Computing η */
+		if (a > 0)
+			eta = 2 * b / (a + sqrt(fabs(sqr(a) - 4 * b * c)));
+		else
+			eta = (a - sqrt(fabs(sqr(a) - 4 * b * c))) / (2 * c);
+		y += eta;
+		f_nxt = f(y, rho, delta, ksi);
+
+		/* Switch between the schemes*/
+		if (f_nxt * f_prv > 0 && fabs(f_nxt) > 0.1 * fabs(f_prv)) 
+			use_fk = !use_fk;
+
+		printf("y = %g eta = %g\n", y, fabs(eta));
+	} while (fabs(f(y, rho, delta, ksi)) > pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y, delta, ksi)));
+
+	return y;
+}
+
+int main() {
+	int K = 4;
+
+	double tst = eig_hybrid(K,RHO, DELTA, KSI);
+	
+	/*
+	for (int i = 0; i < 9; i++)
+		printf("%f\n", tst[i]);
+	*/
+	//free(tst);
+	return EXIT_SUCCESS;
 }
