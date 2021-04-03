@@ -1,9 +1,11 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
+#include <float.h>
 #include "util.h"
-#define SIZE 4
+#define SIZE 10000
 
-const size_t N = SIZE;
+const extern size_t N = SIZE;
 
 double** add(double** m1, double** m2) {
 	double** res = alloc2d(N);
@@ -13,6 +15,10 @@ double** add(double** m1, double** m2) {
 			res[i][j] = m1[i][j] + m2[i][j];	
 	}
 	return res;
+}
+
+double sqr(double x) {
+	return x * x;
 }
 
 double** multiply(double** m1, double** m2)
@@ -54,13 +60,70 @@ void print(double** m) {
 	printf("\n");
 }
 
-double** rd_gen() {
+double** gen_sym() {
+	/* Generate random symetric matrix */
 	double** res = alloc2d(N);
+	double a;
 	for (unsigned i = 0; i < N; i++) {
-		for (unsigned j = 0; j < N; j++)
-			res[i][j] = rand() % 10000;
+		for (unsigned j = 0; j < i + 1; j++) {
+			a = rand() % 10000;
+			res[i][j] = a;
+			res[j][i] = a;
+		}
 	}
 	return res;
+}
+
+double** eye() {
+	double** res = alloc2d(N);
+	for (unsigned int i = 0; i < N; i++) {
+		for (unsigned int j = 0; j < N; j++)
+			res[i][j] = i == j ? 1 : 0;
+	}
+	return res;
+}
+
+double** tridiag(){
+	/* Householder's tridiagonalization */
+	unsigned i;
+	double s = 0, a;
+	double* v = malloc(N * sizeof(double));
+	for (int i = 0; i < N; ++i)
+		v[i] = 0;
+	double** I = eye();
+	double** A_old = gen_sym();
+	double** tmp; double** P; double** A_new = NULL;
+
+	for (int k = 0; k < N - 2; k++) {
+		//print(A_old);
+		for (i = 0; i < k + 1; ++i)
+			v[i] = 0;
+		for (i = k + 1; i < N; i++)
+			s += sqr(A_old[i][k]);
+		s = sqrt(s);
+		v[k + 1] = sqrt(.5 * (1 + fabs(A_old[k + 1][k]) / (s + 2 * DBL_EPSILON)));
+		double sgn = (double)(A_old[k + 1][k] > 0) - (double)(A_old[k + 1][k] < 0);
+		for (i = k + 2; i < N; i++)
+			v[i] = A_old[i][k] * sgn / (2 * v[k + 1] * s + 2* DBL_EPSILON);
+		tmp = alloc2d(N);
+		for (unsigned i = 0; i < N; i++) {
+			for (unsigned j = 0; j < i + 1; j++) {
+				a = -2 * v[i] * v[j];
+				tmp[i][j] = a;
+				tmp[j][i] = a;
+			}
+		}
+		P = add(I, tmp);
+		free(tmp[0]);
+		tmp = multiply(P, A_old);
+		A_new = multiply(tmp, P);
+		// print(P); print(A_new);
+		free(tmp[0]); free(P[0]); free(A_old[0]);
+		A_old = A_new;
+	}
+	
+	return A_new;
+
 }
 
 double** alloc2d(unsigned sz) {
