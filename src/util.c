@@ -3,7 +3,7 @@
 #include <math.h>
 #include <float.h>
 #include "util.h"
-#define SIZE 10000
+#define SIZE 100
 
 const extern size_t N = SIZE;
 

@@ -9,14 +9,14 @@
 const extern size_t N;
 
 #ifndef N
-#define N 10
+#define N 100
 #endif
 
 
 // Debug
 double RHO = .5;
-double DELTA[10] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-double KSI[10] = {.1, .2, .3, .4, .5, .5, .4, .3, .2, .1};
+// double DELTA[N] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+// double KSI[N] = {.1, .2, .3, .4, .5, .5, .4, .3, .2, .1};
 
 struct Tuple {
 	double a, b, c;
@@ -34,6 +34,28 @@ double d_f(double lambda, double* delta, double* ksi) {
 	/* Secular equation, first derivative */
 	double res = 0;
 	for (unsigned short j = 0; j < N; j++) {
+		res += (sqr(ksi[j]) / sqr(lambda - delta[j]));
+	}
+	return res;
+}
+
+double fk(int k, double lambda, double rho, double* delta, double* ksi) {
+	/* Secular equation, exact value */
+	double res = rho;
+	for (unsigned short j = 0; j < N; j++) {
+		if (j == k)
+			continue;
+		res -= sqr(ksi[j]) / (lambda - delta[j]);
+			}
+	return res;
+}
+
+double d_fk(int k,  double lambda, double* delta, double* ksi) {
+	/* Secular equation, first derivative */
+	double res = 0;
+	for (unsigned short j = 0; j < N; j++) {
+		if (j == k)
+			continue;
 		res += (sqr(ksi[j]) / sqr(lambda - delta[j]));
 	}
 	return res;
@@ -77,20 +99,18 @@ struct Tuple middle_way(int k, double lambda, double rho, double* delta, double*
 	return res;
 }
 
-struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, double* ksi, bool fk) {
+struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, double* ksi, bool pol2) {
 	/* Parameters to approximate */
 	struct Tuple res;
-	double fy = f(lambda, rho, delta, ksi);
-	double dfy = d_f(lambda, delta, ksi);
+	double fy = pol2 ? fk(k,lambda, rho, delta, ksi) :f(lambda, rho, delta, ksi);
+	double dfy = pol2 ? d_fk(k, lambda, delta, ksi) :d_f(lambda, delta, ksi);
+	
+//	printf("fy : %f dfy : %f\n", fy, dfy);
 
-	if (fk){
-		fy += sqr(ksi[k]) / (lambda - delta[k]);
-		dfy -= sqr(ksi[k]) / sqr(lambda - delta[k]);
-	}
 
-	/* Defining uppercase deltas */
-	double delta_k = delta[k] - lambda;
-	double delta_k1 = delta[k + 1] - lambda;
+	/* Defining Δ */
+	double delta_k = delta[k] - lambda + DBL_EPSILON;
+	double delta_k1 = delta[k + 1] - lambda + DBL_EPSILON;
 
 	res.a = (delta_k + delta_k1) * fy - delta_k * delta_k1 * dfy;
 	res.b = delta_k * delta_k1 * fy;
@@ -198,7 +218,7 @@ double eig_gragg(int k, double rho, double* delta, double* ksi) {
 			eta = (a - sqrt(fabs(sqr(a) - 4 * b * c))) / (2 * c);
 		// printf("y = %g eta = %g\n", y, fabs(eta));
 		printf("y = %g eta = %g\n", y, eta);
-		printf("1st value : %f, 2nd value : %f, fabs(f(y, rho, delta, ksi)) : %f, fabs(d_f) : %f\n", fabs(f(y, rho, delta, ksi)),  pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y, delta, ksi)), fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
+		//printf("1st value : %f, 2nd value : %f, fabs(f(y, rho, delta, ksi)) : %f, fabs(d_f) : %f\n", fabs(f(y, rho, delta, ksi)),  pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y, delta, ksi)), fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
 	} while (fabs(f(y, rho, delta, ksi)) > pow(10, -15) + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y, delta, ksi)));
 
 	return y;
@@ -227,6 +247,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 	double y = initial_guess(k, rho, delta, ksi);
 	double f_prv = f(y, rho, delta, ksi);
 	double fk = f_prv + sqr(ksi[k]) / (y - delta[k]);  // f(y) without the kth term in the summation
+	bool swtch = true;
 
 	/* /!\ using 2 or 3 poles /!\ */
 	bool use_fk = fk > 0;
@@ -239,6 +260,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 	else
 		eta = (a - sqrt(fabs(sqr(a) - 4 * b * c))) / (2 * c);
 	y += eta;
+	printf("init : c = %f\n", c);
 
 	/* Calculating next value of f(x) */
 	f_nxt = f(y, rho, delta, ksi);
@@ -247,13 +269,13 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 
 	/* Checking if we have to switch to the middle way on the 2nd iteration */
 	if (f_nxt < 0 && fabs(f_nxt) > 0.1 * fabs(f_prv))
-		use_fk = false;
+		swtch = false;
 
 	/* Converging towards zero */
 	do {
 
-		//Using fixed_weight or middle_way
-		param = use_fk ? fixed_weight(k, y, rho, delta, ksi, false) : middle_way(k, y, rho, delta, ksi, false);
+		/* Using fixed_weight or middle_way */
+		param = swtch ? fixed_weight(k, y, rho, delta, ksi, use_fk) : middle_way(k, y, rho, delta, ksi, use_fk);
 		a = param.a; b = param.b; c = param.c;
 
 		/* Computing η */
@@ -266,7 +288,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 
 		/* Switch between the schemes*/
 		if (f_nxt * f_prv > 0 && fabs(f_nxt) > 0.1 * fabs(f_prv))
-			use_fk = !use_fk;
+			swtch = !swtch;
 
 
 		/* Stopping criterion */
@@ -280,8 +302,8 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 		e += f_nxt;
 
 		/* debug values */
-		//printf("y = %g eta = %g\n", y, eta);
-		//printf("1st value : %f, 2nd value : %f, e : %f, fabs(y) : %f, fabs(d_f) : %f\n", fabs(f(y, rho, delta, ksi)),  pow(10, -15) * e + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y + eta, delta, ksi)), e, fabs(y), fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
+		printf("y = %g eta = %g\n", y, eta);
+		printf("1st value : %f, 2nd value : %f, e : %f, fabs(y) : %f, fabs(d_f) : %f\n", fabs(f(y, rho, delta, ksi)),  pow(10, -15) * e + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y + eta, delta, ksi)), e, fabs(y), fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
 
 	} while (fabs(f(y, rho, delta, ksi)) > DBL_EPSILON * e + DBL_EPSILON * fabs(y) * fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
 
@@ -289,8 +311,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 }
 
 int main() {
-	int K = 5;
-	/*
+	// int K = 5;
 	double* DELTA_100 = malloc(N*sizeof(double));
 	double* KSI_100 = malloc(N*sizeof(double));
 	double a, sum = 0;
@@ -310,6 +331,7 @@ int main() {
 		dn += KSI_100[i];
 	DELTA_100[N] = dn;
 
+	/*
 	double* tst = solve_gragg(RHO, DELTA_100, KSI_100);
 
 	// double** A = tridiag();
@@ -322,7 +344,14 @@ int main() {
 	//free(tst);
 	*/
 
-	double y = eig_hybrid(K, RHO, DELTA, KSI);
+	/*
+	for (int i = 0; i < N; i++) {
+		double y = eig_hybrid(i, RHO, DELTA_100, KSI_100);
+		printf("i : %i y = %f\n", i, y);
+	}
+	*/
+
+	printf("%f\n", eig_hybrid(97, RHO, DELTA_100, KSI_100));
 
 	return EXIT_SUCCESS;
 }
