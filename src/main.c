@@ -9,7 +9,7 @@
 const extern size_t N;
 
 #ifndef N
-#define N 10
+#define N 20
 #endif
 
 
@@ -249,6 +249,9 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 	if (f_nxt < 0 && fabs(f_nxt) > 0.1 * fabs(f_prv))
 		use_fk = false;
 
+	/* Testing if lambda[k] closer to delta[k] or delta[k + 1] */
+	int kj = fabs(y - delta[k]) < fabs(y - delta[k + 1]) ? k : k + 1;
+
 	/* Converging towards zero */
 	do {
 
@@ -270,7 +273,8 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 
 
 		/* Stopping criterion */
-		e = 0;
+
+		e = 2 * rho;
 		for (int j = 0; j <= k; j++) {
 			e += (k - j + 6) * fabs(sqr(ksi[j]) / (delta[j] - y));
 		}
@@ -281,16 +285,32 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 
 		/* debug values */
 		//printf("y = %g eta = %g\n", y, eta);
-		//printf("1st value : %f, 2nd value : %f, e : %f, fabs(y) : %f, fabs(d_f) : %f\n", fabs(f(y, rho, delta, ksi)),  pow(10, -15) * e + pow(10, -15) * fabs(y) * fabs(d_f(2 * delta[k] - y + eta, delta, ksi)), e, fabs(y), fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
+		//printf("1st value : %e, 2nd value : %e, e : %e\n", fabs(f(y, rho, delta, ksi)),  DBL_EPSILON * e + DBL_EPSILON	 * fabs(y - delta[kj]) * fabs(d_f(y - 2 * delta[kj], delta, ksi)), e);
 
-	} while (fabs(f(y, rho, delta, ksi)) > DBL_EPSILON * e + DBL_EPSILON * fabs(y) * fabs(d_f(2 * delta[k] - y + eta, delta, ksi)));
+	} while (fabs(f(y, rho, delta, ksi)) > DBL_EPSILON * e + DBL_EPSILON * fabs(y - delta[kj]) * fabs(d_f(y - 2 * delta[kj], delta, ksi)));
 
 	return y;
 }
 
+double* solve_hybrid(double rho, double* delta, double* ksi) {
+	/* Compute all the eigenvalues using the Hybrid scheme*/
+	double* res = malloc(N * sizeof(double));
+	if (res == NULL)
+		perror("Memory error");
+	int k;
+
+#pragma omp parallel for
+	for (k = 0; k < N; k++) {
+		*(res+k) = eig_hybrid(k, rho, delta, ksi);	//check if memory is rightfully allocated
+		printf("%de value : %f\n", k + 1, *(res + k));	//test
+	}
+	return res;
+}
+
 int main() {
 	int K = 5;
-	/*
+	/* test Lewan sur matrices
+
 	double* DELTA_100 = malloc(N*sizeof(double));
 	double* KSI_100 = malloc(N*sizeof(double));
 	double a, sum = 0;
@@ -322,7 +342,24 @@ int main() {
 	//free(tst);
 	*/
 
-	double y = eig_hybrid(K, RHO, DELTA, KSI);
+	/* test Arlandis sur matrices */
+	double ** m_tri = tridiag();
+	double * m_delta = malloc(N * sizeof(double));
+	double * m_ksi = malloc(N * sizeof(double));
+	srand(time(NULL));
+
+	for(int i = 0; i < N; ++i) {
+		m_delta[i] = (double)(fabs((int)(m_tri[i][i]) % 100));
+		m_ksi[i] = (double) ((rand() % 101) * pow(10, -2));
+	}
+
+	/* prints */
+
+	//print(m_tri);
+	print1(m_delta);
+	print1(m_ksi);
+
+	double * res = solve_hybrid(RHO, m_delta, m_ksi);
 
 	return EXIT_SUCCESS;
 }

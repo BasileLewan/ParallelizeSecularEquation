@@ -3,7 +3,7 @@
 #include <math.h>
 #include <float.h>
 #include "util.h"
-#define SIZE 10000
+#define SIZE 20
 
 const extern size_t N = SIZE;
 
@@ -11,8 +11,8 @@ double** add(double** m1, double** m2) {
 	double** res = alloc2d(N);
 
 	for (unsigned int i = 0; i < N; i++) {
-		for (unsigned int j = 0; j < N; j++) 
-			res[i][j] = m1[i][j] + m2[i][j];	
+		for (unsigned int j = 0; j < N; j++)
+			res[i][j] = m1[i][j] + m2[i][j];
 	}
 	return res;
 }
@@ -28,7 +28,7 @@ double** multiply(double** m1, double** m2)
 		for (unsigned int j = 0; j < N; j++) {
 			double tmp = 0;
 			int k;
-#pragma omp parallel for reduction(+:tmp) 
+#pragma omp parallel for reduction(+:tmp)
 			for (k = 0; k < N; k++) {
 				tmp += m1[i][k] * m2[k][j];
 			}
@@ -41,7 +41,7 @@ double** multiply(double** m1, double** m2)
 
 void times(double x, double** m) {
 	for (unsigned int k = 0; k < N * N; k++) {
-			m[0][k] *= x; // Violation d'accès lors de la lecture 
+			m[0][k] *= x; // Violation d'acces lors de la lecture
 	}
 }
 
@@ -53,17 +53,27 @@ void print(double** m) {
 		printf("|  ");
 		for (unsigned int j = 0; j < N; j++)
 			printf("%07.1f  ", m[i][j]);
-		printf(" |\n");
+		printf("ï¿½|\n");
 	}
 	for (unsigned int k = 0; k < N; k++)
 		printf("----------");
 	printf("\n");
 }
 
+void print1(double* m) {	//print 1st dimension arrays
+	printf("{");
+	for(int i = 0; i < N - 1; ++i) {
+		printf("%03.1f, ", m[i]);
+	}
+	printf("%03.1f}\n", m[N - 1]);
+}
+
 double** gen_sym() {
 	/* Generate random symetric matrix */
 	double** res = alloc2d(N);
 	double a;
+	srand(time(NULL));
+
 	for (unsigned i = 0; i < N; i++) {
 		for (unsigned j = 0; j < i + 1; j++) {
 			a = rand() % 10000;
@@ -121,9 +131,7 @@ double** tridiag(){
 		free(tmp[0]); free(P[0]); free(A_old[0]);
 		A_old = A_new;
 	}
-	
 	return A_new;
-
 }
 
 double** alloc2d(unsigned sz) {
