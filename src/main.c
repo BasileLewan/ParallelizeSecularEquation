@@ -9,14 +9,14 @@
 const extern size_t N;
 
 #ifndef N
-#define N 100
+#define N 10
 #endif
 
 
 // Debug
 double RHO = .5;
-// double DELTA[N] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
-// double KSI[N] = {.1, .2, .3, .4, .5, .5, .4, .3, .2, .1};
+double DELTA[N + 1] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0};
+double KSI[N] = {.1, .2, .3, .4, .5, .5, .4, .3, .2, .1};
 
 struct Tuple {
 	double a, b, c;
@@ -120,7 +120,7 @@ struct Tuple fixed_weight(int k, double lambda, double rho, double* delta, doubl
 	if (fabs(lambda - delta[k]) < fabs(lambda - delta[k + 1])) {
 		res.c = fy - delta_k1 * dfy - sqr(ksi[k]) * (delta[k] - delta[k + 1]) / sqr(delta_k);
 	}
-	else{
+	else {
 		res.c = fy - delta_k * dfy - sqr(ksi[k + 1]) * (delta[k + 1] - delta[k]) / sqr(delta_k1);
 	}
 
@@ -246,14 +246,14 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 	double a, b, c, e, eta, f_nxt;
 	double y = initial_guess(k, rho, delta, ksi);
 	double f_prv = f(y, rho, delta, ksi);
-	double fk = f_prv + sqr(ksi[k]) / (y - delta[k]);  // f(y) without the kth term in the summation
+	double f_k = fk(k, y, rho, delta, ksi);  // f(y) without the kth term in the summation
 	bool swtch = true;
 
 	/* /!\ using 2 or 3 poles /!\ */
-	bool use_fk = fk > 0;
+	bool use_fk = f_k < 0;
 
 	/* getting a new approximation to 1 */
-	param = fixed_weight(k, y, rho, delta, ksi, !use_fk);	//modified cause fk > 0 => two poles using f(x)
+	param = fixed_weight(k, y, rho, delta, ksi, use_fk);	//modified cause fk > 0 => two poles using f(x)
 	a = param.a; b = param.b; c = param.c;
 	if (a > 0)
 		eta = 2 * b / (a + sqrt(fabs(sqr(a) - 4 * b * c)));
@@ -264,8 +264,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 
 	/* Calculating next value of f(x) */
 	f_nxt = f(y, rho, delta, ksi);
-	f_prv = f_nxt;
-	fk = f_prv + sqr(ksi[k]) / (y - delta[k]);
+	// f_k = f_prv + sqr(ksi[k]) / (y - delta[k]);
 
 	/* Checking if we have to switch to the middle way on the 2nd iteration */
 	if (f_nxt < 0 && fabs(f_nxt) > 0.1 * fabs(f_prv))
@@ -299,17 +298,17 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi) {
 		e = 2 * rho;
 		for (int j = 0; j <= k; j++) {
 			e += (k - j + 6) * fabs(sqr(ksi[j]) / (delta[j] - y));
-		}
+		}  
 		for (int j = k; j <= N - 1; j++) {
 			e += (j - k + 5) * fabs(sqr(ksi[j]) / (delta[j] - y));
 		}
 		e += f_nxt;
 
 		/* debug values */
-		//printf("y = %g eta = %g\n", y, eta);
-		//printf("1st value : %e, 2nd value : %e, e : %e\n", fabs(f(y, rho, delta, ksi)),  DBL_EPSILON * e + DBL_EPSILON	 * fabs(y - delta[kj]) * fabs(d_f(y - 2 * delta[kj], delta, ksi)), e);
+		printf("y = %g eta = %g\n", y, eta);
+		printf("1st value : %e, 2nd value : %e, e : %e\n", fabs(f(y, rho, delta, ksi)),  DBL_EPSILON * e + DBL_EPSILON	 * fabs(y - delta[kj]) * fabs(d_f(2 * delta[kj] - y, delta, ksi)), e);
 
-	} while (fabs(f(y, rho, delta, ksi)) > DBL_EPSILON * e + DBL_EPSILON * fabs(y - delta[kj]) * fabs(d_f(y - 2 * delta[kj], delta, ksi)));
+	} while (fabs(f(y, rho, delta, ksi)) > DBL_EPSILON * e + DBL_EPSILON * fabs(y - delta[kj]) * fabs(d_f(2 * delta[kj] - y, delta, ksi));
 
 	return y;
 }
@@ -330,9 +329,11 @@ double* solve_hybrid(double rho, double* delta, double* ksi) {
 }
 
 int main() {
-	// int K = 5;
-	int K = 5;
-	/* test Lewan sur matrices
+	int K = 9;
+
+
+	/* test Lewan sur matrices 
+	*/
 
 	double* DELTA_100 = malloc(N*sizeof(double));
 	double* KSI_100 = malloc(N*sizeof(double));
@@ -353,6 +354,9 @@ int main() {
 		dn += KSI_100[i];
 	DELTA_100[N] = dn;
 
+	for (int i = 0; i < N; i++)
+		printf("i : %d y = %f\n", i, eig_hybrid(i, RHO, DELTA_100, KSI_100));
+
 	/*
 	double* tst = solve_gragg(RHO, DELTA_100, KSI_100);
 
@@ -366,7 +370,9 @@ int main() {
 	//free(tst);
 	*/
 
-	/* test Arlandis sur matrices */
+	//printf("%f\n", eig_hybrid(97, RHO, DELTA_100, KSI_100));
+
+	/* test Arlandis sur matrices 
 	double ** m_tri = tridiag();
 	double * m_delta = malloc(N * sizeof(double));
 	double * m_ksi = malloc(N * sizeof(double));
@@ -377,13 +383,14 @@ int main() {
 		m_ksi[i] = (double) ((rand() % 101) * pow(10, -2));
 	}
 
-	/* prints */
+	// prints
 
 	//print(m_tri);
 	print1(m_delta);
 	print1(m_ksi);
 
 	double * res = solve_hybrid(RHO, m_delta, m_ksi);
+	*/
 
 	return EXIT_SUCCESS;
 }
