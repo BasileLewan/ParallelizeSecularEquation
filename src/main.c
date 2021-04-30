@@ -306,7 +306,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi, int* compteur, 
 			/* breaking and returning current y */
 
 			/* debug values for infinite iterations */
-
+			/*
 			printf("\n------------------------- k = %.2d -------------------------\n\n", k);
 			printf("delta[k-1] : %.1f, delta[k] : %.1f, delta[k+1] : %.1f\n", delta[k - 1], delta[k], delta[k + 1]);
 			printf("ksi[k-1] : %.3f, ksi[k] : %.3f, ksi[k+1] : %.3f\n", ksi[k - 1], ksi[k], ksi[k + 1]);
@@ -314,7 +314,7 @@ double eig_hybrid(int k, double rho, double* delta, double* ksi, int* compteur, 
 			printf("%e > %e\n", fabs(f(y, rho, delta, ksi)), precision * e + precision * fabs(y - delta[kj]) * fabs(d_f(2 * delta[kj] - y, delta, ksi)));
 			printf("y : %f, f(y) : %e\n", y, f(y, rho, delta, ksi));
 			printf("\n----------------------------------------------------------\n\n");
-
+			*/
 			*compteur += 1;
 			break;
 		}
@@ -374,16 +374,97 @@ double* solve_hybrid(double rho, double* delta, double* ksi, int* compteur, doub
 }
 
 
+/* Tests various precisions on matrices of various length
+	.pre0    : precision to start with and then lower
+	.preInc  : number of precision incrementation before lowering to next exponential
+		ex : if one choses pre0 = 1e-15 and preInc = 3
+			 	 first 3 iterations would have a precision equal to 1e-15, 3.3e-15 and 6.6e-15
+				 fourth iteration would get to a precision equal to 1e-14, etc.
+	.nbItPre : number of iterations on precision before the method stops
+	.len0    : length of matrices to start with and then increase
+	.lenInc  : length to add to matrices at each iteration
+	.nbItLen : number of iterations on matrices length before lowering precision
+	.nbTests : number of tests on matrices on given length with given precision
+
+	test_precision first increases matrices length nbItLen times for a given precision,
+	then lowers precision and reset matrices length, and repeats this process preInc times */
+void test_precision(double pre0, double preInc, int nbItPre, int len0, int lenInc, int nbItLen, int nbTests) {
+	double pre = pre0;
+	int len = len0;
+	int quo = (int) preInc;
+	int compteur = 0;
+	int compteur1 = 0;
+	int *cpt = &compteur;
+	int nbTestsPerPre = 0;
+	for (int i = 0; i < nbItLen; ++i)
+		nbTestsPerPre += nbTests * (len0 + i * lenInc);
+	double* DELTA_LEN = malloc(len*sizeof(double));
+	double* KSI_LEN = malloc(len*sizeof(double));
+	double RHO = .5;
+	double ksisum = 0;
+	srand(time(NULL));
+
+	for (int cpt1 = 0; cpt1 < nbItPre; ++cpt1) {
+		/* It on precision */
+		compteur1 = 0;
+		if (cpt1 % quo == 0)
+			pre = pre0 * pow(10, cpt1 / quo);
+		else
+			pre = pre0 * (10 / preInc) * (cpt1 % quo) * pow(10, cpt1 / quo);
+
+		printf("/---------------------------------------------------------------------/\n");
+		printf("/------------------------ precision : %.1e ------------------------/\n", pre);
+		printf("/---------------------------------------------------------------------/\n");
+
+		for (int cpt2 = 0; cpt2 < nbItLen; ++cpt2) {
+			/* It on matrices length */
+			compteur = 0;
+			len = len0 + cpt2 * lenInc;
+
+			printf("         --------------- matrices length : %.2d ----------------\n", len);
+
+			for (int cpt3 = 0; cpt3 < nbTests; ++cpt3) {
+				/* Testing precision pre on nbTests generated matrices length len */
+				/* Initialization */
+				ksisum = 0;
+
+				/* Generating DELTA and KSI matrices */
+				for (unsigned i = 0; i < len; i++) {
+					if(i == 0)
+						KSI_LEN[i] = rand() % 10;
+					else
+						KSI_LEN[i] = DELTA_LEN[i - 1] + (rand() % 5) + 1;	//delta <= 100 for len <= 50
+					KSI_LEN[i] = ((rand() % 95) + 5) * pow(10, -2);				//ksi is in ]0; 1[
+					ksisum += sqr(KSI_LEN[i]);
+				}
+
+				/* Defining d[n] and ksi[n] for last iteration */
+				KSI_LEN[len] = ((rand() % 95) + 5) * pow(10, -2);
+				DELTA_LEN[len] = DELTA_LEN[len - 1] + ksisum / RHO;	//defining dn+1 as in the paper : dn + ztz / rho
+
+				solve_hybrid(RHO, DELTA_LEN, KSI_LEN, cpt, pre);
+			}
+			compteur1 += compteur;
+			printf("                             breaks : %.2d/%.2d                   \n", compteur, len * nbTests);
+		}
+		printf("                        total breaks : %.2d/%.2d                   \n", compteur1, nbTestsPerPre);
+	}
+}
+
+
 int main() {
 	/* test Lewan sur matrices */
 
-	/* Initialization */
+	test_precision(pow(10, -15), 2, 8, 40, 20, 6, 3);
+
+	/*
+	//Initialization
 	double* DELTA_100 = malloc(N*sizeof(double));
 	double* KSI_100 = malloc(N*sizeof(double));
 	double ksisum = 0;
 	srand(time(NULL));
 
-	/* Generating DELTA and KSI matrices */
+	//Generating DELTA and KSI matrices
 	for (unsigned i = 0; i < N; i++) {
 		if(i == 0)
 			DELTA_100[i] = rand() % 10;
@@ -393,21 +474,22 @@ int main() {
 		ksisum += sqr(KSI_100[i]);
 	}
 
-	/* Defining d[n] and ksi[n] for last iteration */
+	//Defining d[n] and ksi[n] for last iteration
 	KSI_100[N] = ((rand() % 95) + 5) * pow(10, -2);
 	DELTA_100[N] = DELTA_100[N - 1] + ksisum / RHO;	//defining dn+1 as in the paper : dn + ztz / rho
 
-	/* Counting number of algorithm forced stops */
+	//Counting number of algorithm forced stops
 	int compteur = 0;
 	int *cpt = &compteur;
 
-	/* Precision used in stopping criteria */
-	double precision = 5 * pow(10, -14);
+	//Precision used in stopping criteria
+	double precision = 5 * pow(10, -15);
 
 	double *hyb = solve_hybrid(RHO, DELTA_100, KSI_100, cpt, precision);
+	printf("          nb de break : %d\n\n", compteur);
 
-	printf("nb de break : %d\n", compteur);
-	printf("précision utilisée : %.1e\n", precision);
+	printf("----- précision utilisée : %.1e -----\n", precision);
+	*/
 
 	return EXIT_SUCCESS;
 }
