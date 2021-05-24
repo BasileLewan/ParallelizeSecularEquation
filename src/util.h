@@ -1,7 +1,8 @@
+#pragma once
 #include <stdlib.h>
 
 
-const extern size_t N;
+extern size_t N;
 double sqr(double x);
 
 /* Basical matrix operations*/
@@ -16,4 +17,7 @@ double** gen_sym();
 double** eye();
 
 /* Serious business */
-double** tridiag();
+double** tridiag(size_t size);
+double get_rho(double** matrix);
+double* get_ksi(double** matrix);
+double* get_delta(double** matrix, double* ksi, double rho);
