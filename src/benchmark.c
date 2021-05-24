@@ -34,8 +34,7 @@ void test_precision(double pre0, double preInc, int nbItPre, int len0, int lenIn
 	int nbTestsPerPre = 0;
 	for (int i = 0; i < nbItLen; ++i)
 		nbTestsPerPre += nbTests * (len0 + i * lenInc);
-	double* DELTA_LEN = malloc(len * sizeof(double));
-	double* KSI_LEN = malloc(len * sizeof(double));
+	double *DELTA_LEN, *KSI_LEN;
 	double RHO = .5;
 	double ksisum = 0;
 	srand(time(NULL));
@@ -56,6 +55,7 @@ void test_precision(double pre0, double preInc, int nbItPre, int len0, int lenIn
 			/* It on matrices length */
 			compteur = 0;
 			len = len0 + cpt2 * lenInc;
+			N = len;
 
 			printf("         --------------- matrices length : %.2d ----------------\n", len);
 
@@ -63,23 +63,27 @@ void test_precision(double pre0, double preInc, int nbItPre, int len0, int lenIn
 				/* Testing precision pre on nbTests generated matrices length len */
 				/* Initialization */
 				ksisum = 0;
+				DELTA_LEN = malloc((len + 1) * sizeof(double));
+				KSI_LEN = malloc((len + 1) * sizeof(double));
 
 				/* Generating DELTA and KSI vectors */
 				for (unsigned i = 0; i < len; i++) {
+					DELTA_LEN[i] = (double)(rand() % 100000);
 					if (i == 0)
 						KSI_LEN[i] = rand() % 10;
 					else
 						KSI_LEN[i] = DELTA_LEN[i - 1] + (rand() % 5) + 1;	//delta <= 100 for len <= 50
-					KSI_LEN[i] = ((rand() % 95) + 5) * pow(10, -2);				//ksi is in ]0; 1[
+					KSI_LEN[i] = ((double)(rand() % 95) + 5) * pow(10, -2);				//ksi is in ]0; 1[
 					ksisum += sqr(KSI_LEN[i]);
 				}
 
 				/* Defining d[n] and ksi[n] for last iteration */
-				KSI_LEN[len] = ((rand() % 95) + 5) * pow(10, -2);
+				KSI_LEN[len] = ((double)(rand() % 95) + 5) * pow(10, -2);
 				DELTA_LEN[len] = DELTA_LEN[len - 1] + ksisum / RHO;	//defining dn+1 as in the paper : dn + ztz / rho
 
 				double* res = solve_hybrid(RHO, DELTA_LEN, KSI_LEN, cpt, pre);
-				free(res);
+
+				free(res); free(KSI_LEN); free(DELTA_LEN);
 			}
 			compteur1 += compteur;
 			printf("                             breaks : %.2d/%.2d                   \n", compteur, len * nbTests);
@@ -105,14 +109,14 @@ double speed_test(double** A, unsigned algo) {
 
 
 int main() {
-	// test_precision(pow(10, -15), 2, 8, 40, 20, 6, 3);
+	test_precision(DBL_EPSILON, 2, 12, 40, 60, 6, 3);
 
 	fprintf(stderr, "Number of available threads : %d\n\n", omp_get_max_threads());
 
 	for (N = 1000; N < 50001; N += 1000) {
 		double** A = gen_sym(N);
 		fprintf(stderr, "Size : %d\n\tGragg  : %.10f\n", N, speed_test(A, GRAGG));
-		fprintf(stderr, "\tHybrid : %.10f\n", speed_test(A, HYBRID);
+		fprintf(stderr, "\tHybrid : %.10f\n", speed_test(A, HYBRID));
 		free(A[0]);
 	}
 

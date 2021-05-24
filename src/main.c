@@ -178,7 +178,6 @@ double initial_guess(int k, double rho, double* delta, double* ksi) {
 			a = c * (delta[k + 1] - delta[k]) + sqr(ksi[k]) + sqr(ksi[k + 1]);
 			b = (delta[k + 1] - delta[k]) * sqr(ksi[k]);
 		}
-		double debug = delta[k];
 		if (a > 0) {
 			return (2 * b / (a + sqrt(fabs(sqr(a) - 4 * b * c)))) + delta[k]; // negative sqrt !!
 		}
